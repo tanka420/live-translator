@@ -11,7 +11,7 @@ same VPS.
 
 Use the public repository as the source of truth:
 
-- `https://github.com/thanhhuy0611/live-event-translator-demo`
+- `https://github.com/tanka420/live-translator`
 
 Recommended workflow:
 
@@ -36,7 +36,7 @@ Keep the translator app separate from WordPress paths.
 Recommended location:
 
 ```text
-/srv/live-event-translator-demo
+/srv/live-translator
 ```
 
 Keep these separate from existing WordPress directories:
@@ -89,18 +89,18 @@ Notes:
 Build:
 
 ```bash
-docker build -t live-event-translator-demo .
+docker build -t live-translator .
 ```
 
 Run:
 
 ```bash
 docker run -d \
-  --name live-event-translator-demo \
+  --name live-translator \
   --restart unless-stopped \
   -p 127.0.0.1:5173:5173 \
-  --env-file /srv/live-event-translator-demo/.env \
-  live-event-translator-demo
+  --env-file /srv/live-translator/.env \
+  live-translator
 ```
 
 Check health:
@@ -194,4 +194,3 @@ Each update should follow this order:
 3. Verify `GET /healthz`.
 4. Open `translator.songdailong.com`.
 5. Test one full capture session.
-

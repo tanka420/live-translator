@@ -322,6 +322,6 @@ if (process.argv[1] === __filename) {
   const server = buildServer();
 
   server.listen(port, host, () => {
-    console.log(`Live Event Translator demo listening at http://${host}:${port}`);
+    console.log(`Live Translator listening at http://${host}:${port}`);
   });
 }

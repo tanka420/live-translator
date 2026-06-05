@@ -26,7 +26,7 @@ test("serves the browser app from the root route", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /text\/html/);
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-    assert.match(body, /Live Event Translator/);
+    assert.match(body, /Live Translator/);
     assert.match(body, /Choose event tab/);
     assert.doesNotMatch(body, /Start translating</);
     assert.doesNotMatch(body, /OpenAI Developers/);

@@ -1,4 +1,4 @@
-# Live Event Translator Demo
+# Live Translator
 
 Browser-based live translation app for internal use. This repository is a
 customized derivative of the OpenAI Cookbook browser translation demo, adapted
@@ -72,12 +72,12 @@ http://127.0.0.1:5173
 Minimal VPS deployment:
 
 ```bash
-docker build -t live-event-translator-demo .
+docker build -t live-translator .
 docker run -d \
-  --name live-event-translator-demo \
+  --name live-translator \
   -p 5173:5173 \
   --env-file .env \
-  live-event-translator-demo
+  live-translator
 ```
 
 If you use Docker, make sure `.env` includes `HOST=0.0.0.0`.
