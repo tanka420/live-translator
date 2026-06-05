@@ -1,4 +1,3 @@
-import { buildAudioMixState } from "/audio-mix.js";
 import { buildDisplayMediaOptions } from "/capture-options.js";
 
 const TRANSLATION_CALL_URL =
@@ -10,12 +9,11 @@ const INPUT_TRANSCRIPT_EVENTS = new Set(["session.input_transcript.delta"]);
 const targetLanguage = document.querySelector("#targetLanguage");
 const startButton = document.querySelector("#startButton");
 const stopButton = document.querySelector("#stopButton");
-const audioMix = document.querySelector("#audioMix");
-const mixValue = document.querySelector("#mixValue");
-const originalMixLabel = document.querySelector("#originalMixLabel");
-const translatedMixLabel = document.querySelector("#translatedMixLabel");
 const statusDot = document.querySelector("#statusDot");
 const statusText = document.querySelector("#statusText");
+const sessionCount = document.querySelector("#sessionCount");
+const accountName = document.querySelector("#accountName");
+const logoutButton = document.querySelector("#logoutButton");
 const inputMeter = document.querySelector("#inputMeter");
 const queueProgress = document.querySelector("#queueProgress");
 const translatedTranscript = document.querySelector("#translatedTranscript");
@@ -35,29 +33,40 @@ let meterContext = null;
 let meterSource = null;
 let meterAnalyser = null;
 let meterTimer = null;
-let sourceAudio = null;
-let translatedAudio = null;
 let diagnostics = createEmptyDiagnostics();
+let sessionNumber = 0;
+let sessionRefreshTimer = null;
+let reconnectTimer = null;
+let reconnectDelayMs = 1000;
+let sessionRecoveryInProgress = false;
+let authState = {
+  authenticated: true,
+  enabled: false,
+  username: null,
+};
 
-applyAudioMix();
+startButton.disabled = true;
+stopButton.disabled = true;
+targetLanguage.disabled = true;
+logoutButton.disabled = true;
 
-audioMix.addEventListener("input", () => {
-  applyAudioMix();
+logoutButton.addEventListener("click", async () => {
+  await fetch("/auth/logout", { method: "POST" });
+  location.href = "/";
 });
 
 startButton.addEventListener("click", async () => {
-  clearTranscript();
-  resetDiagnostics();
+  beginSession();
   setControls({ running: true });
   setStatus("Pick a browser tab with audio", "idle");
 
   try {
+    activeMeetingReset();
     captureStream = await captureTabAudio();
-    startSourceAudio(captureStream);
     startInputMeter(captureStream);
 
     setStatus("Creating Realtime Translation session", "idle");
-    const session = await createSession(targetLanguage.value);
+    const session = await createRealtimeSession(targetLanguage.value);
 
     setStatus("Connecting WebRTC", "idle");
     await connectRealtimeTranslation(session, captureStream);
@@ -66,6 +75,9 @@ startButton.addEventListener("click", async () => {
   } catch (error) {
     logEvent("error", error instanceof Error ? error.message : String(error));
     await stop("Stopped after startup error", "error");
+    if (error instanceof Error && /authentication required/i.test(error.message)) {
+      location.href = "/";
+    }
   }
 });
 
@@ -82,26 +94,33 @@ async function createSession(language) {
 
   const body = await response.json();
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Authentication required.");
+    }
     throw new Error(body.error ?? "Failed to create session.");
   }
 
   return body;
 }
 
+async function createRealtimeSession(language) {
+  const session = await createSession(language);
+  scheduleSessionRefresh(session.expires_at);
+  return session;
+}
+
 async function connectRealtimeTranslation(session, stream) {
   peerConnection = new RTCPeerConnection();
   dataChannel = peerConnection.createDataChannel("oai-events");
-
-  translatedAudio = new Audio();
-  translatedAudio.autoplay = true;
-  translatedAudio.playsInline = true;
-  applyAudioMix();
 
   peerConnection.onconnectionstatechange = () => {
     diagnostics.connectionState = peerConnection?.connectionState ?? "closed";
     chunksSent.textContent = diagnostics.connectionState;
     logEvent("webrtc.connection", diagnostics.connectionState);
     updateDiagnostics();
+    if (shouldRecoverConnection(diagnostics.connectionState)) {
+      void scheduleConnectionRecovery("WebRTC connection lost");
+    }
   };
 
   peerConnection.oniceconnectionstatechange = () => {
@@ -115,14 +134,9 @@ async function connectRealtimeTranslation(session, stream) {
     updateDiagnostics();
   };
 
-  peerConnection.ontrack = ({ streams }) => {
+  peerConnection.ontrack = () => {
     diagnostics.remoteAudioTracks += 1;
     outputAudioDeltas.textContent = String(diagnostics.remoteAudioTracks);
-    translatedAudio.srcObject = streams[0];
-    applyAudioMix();
-    void translatedAudio.play().catch((error) => {
-      logEvent("audio.play", error.message);
-    });
     logEvent("remote.audio", "track received");
     updateDiagnostics();
   };
@@ -235,34 +249,6 @@ function startInputMeter(stream) {
   }, 100);
 }
 
-function startSourceAudio(stream) {
-  sourceAudio = new Audio();
-  sourceAudio.autoplay = true;
-  sourceAudio.playsInline = true;
-  sourceAudio.srcObject = stream;
-  applyAudioMix();
-
-  void sourceAudio.play().catch((error) => {
-    logEvent("source.audio.play", error.message);
-  });
-}
-
-function applyAudioMix() {
-  const mix = buildAudioMixState(audioMix.value);
-
-  audioMix.value = String(mix.translatedPercent);
-  mixValue.textContent = mix.valueLabel;
-  originalMixLabel.textContent = mix.originalLabel;
-  translatedMixLabel.textContent = mix.translatedLabel;
-
-  if (sourceAudio) {
-    sourceAudio.volume = mix.originalVolume;
-  }
-  if (translatedAudio) {
-    translatedAudio.volume = mix.translatedVolume;
-  }
-}
-
 function handleRealtimeEvent(message) {
   let event;
   try {
@@ -304,6 +290,7 @@ function handleRealtimeEvent(message) {
 }
 
 async function stop(message, state = "idle") {
+  activeMeetingReset();
   if (meterTimer) {
     window.clearInterval(meterTimer);
     meterTimer = null;
@@ -325,20 +312,8 @@ async function stop(message, state = "idle") {
   peerConnection?.close();
   peerConnection = null;
 
-  if (sourceAudio) {
-    sourceAudio.pause();
-    sourceAudio.srcObject = null;
-  }
-  sourceAudio = null;
-
   captureStream?.getTracks().forEach((track) => track.stop());
   captureStream = null;
-
-  if (translatedAudio) {
-    translatedAudio.pause();
-    translatedAudio.srcObject = null;
-  }
-  translatedAudio = null;
 
   inputMeter.value = 0;
   queueProgress.value = 0;
@@ -347,9 +322,10 @@ async function stop(message, state = "idle") {
 }
 
 function setControls({ running }) {
-  startButton.disabled = running;
+  startButton.disabled = running || !authState.authenticated;
   stopButton.disabled = !running;
-  targetLanguage.disabled = running;
+  targetLanguage.disabled = running || !authState.authenticated;
+  logoutButton.disabled = !authState.authenticated || !authState.enabled;
 }
 
 function setStatus(message, state) {
@@ -387,6 +363,144 @@ function resetDiagnostics() {
   updateDiagnostics();
 }
 
+function beginSession() {
+  sessionNumber += 1;
+  sessionCount.textContent = `Session ${sessionNumber}`;
+  clearTranscript();
+  resetDiagnostics();
+}
+
+function activeMeetingReset() {
+  clearSessionRefreshTimer();
+  clearReconnectTimer();
+  sessionRecoveryInProgress = false;
+  reconnectDelayMs = 1000;
+}
+
+async function syncAuthState() {
+  try {
+    const response = await fetch("/auth/status");
+    const body = await response.json();
+    authState = {
+      authenticated: Boolean(body.authenticated),
+      enabled: Boolean(body.enabled),
+      username: body.username ?? null,
+    };
+  } catch {
+    authState = {
+      authenticated: false,
+      enabled: false,
+      username: null,
+    };
+  }
+
+  if (!authState.authenticated) {
+    accountName.textContent = "Sign in required";
+    logoutButton.hidden = true;
+    startButton.disabled = true;
+    stopButton.disabled = true;
+    targetLanguage.disabled = true;
+    logoutButton.disabled = true;
+    return;
+  }
+
+  logoutButton.hidden = !authState.enabled;
+  accountName.textContent = authState.enabled
+    ? `Signed in as ${authState.username ?? "internal user"}`
+    : "Auth disabled";
+  setControls({ running: false });
+}
+
+function scheduleSessionRefresh(expiresAt) {
+  clearSessionRefreshTimer();
+  if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) {
+    return;
+  }
+
+  const refreshDelayMs = Math.max(30_000, expiresAt - Date.now() - 60_000);
+  sessionRefreshTimer = window.setTimeout(() => {
+    sessionRefreshTimer = null;
+    void scheduleConnectionRecovery("Session expiring");
+  }, refreshDelayMs);
+}
+
+async function scheduleConnectionRecovery(reason) {
+  if (!captureStream || !authState.authenticated || sessionRecoveryInProgress || !peerConnection) {
+    return;
+  }
+
+  if (reconnectTimer) {
+    return;
+  }
+
+  sessionRecoveryInProgress = true;
+  clearSessionRefreshTimer();
+  try {
+    logEvent("reconnect", `${reason}; retrying now`);
+    setStatus("Reconnecting session", "idle");
+    closeRealtimeConnection();
+    const session = await createRealtimeSession(targetLanguage.value);
+    if (!captureStream) {
+      return;
+    }
+    await connectRealtimeTranslation(session, captureStream);
+    setStatus("Translating tab audio", "live");
+    reconnectDelayMs = 1000;
+    logEvent("reconnect", "Session restored");
+  } catch (error) {
+    closeRealtimeConnection();
+    const detail = error instanceof Error ? error.message : String(error);
+    logEvent("error", detail);
+    scheduleReconnectRetry(reason);
+  } finally {
+    sessionRecoveryInProgress = false;
+  }
+}
+
+function scheduleReconnectRetry(reason) {
+  if (!captureStream || !activeMeetingRunning()) {
+    return;
+  }
+
+  clearReconnectTimer();
+  const delay = reconnectDelayMs;
+  reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30_000);
+  logEvent("reconnect", `${reason}; retry in ${Math.round(delay / 1000)}s`);
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    void scheduleConnectionRecovery(reason);
+  }, delay);
+}
+
+function clearSessionRefreshTimer() {
+  if (sessionRefreshTimer) {
+    window.clearTimeout(sessionRefreshTimer);
+    sessionRefreshTimer = null;
+  }
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function closeRealtimeConnection() {
+  closeRealtimeConnection();
+}
+
+function shouldRecoverConnection(connectionState) {
+  return (
+    connectionState === "failed" ||
+    connectionState === "disconnected"
+  );
+}
+
+function activeMeetingRunning() {
+  return Boolean(captureStream && startButton.disabled && !stopButton.disabled);
+}
+
 function updateDiagnostics() {
   chunksSent.textContent = diagnostics.connectionState;
   activeInputFrames.textContent = diagnostics.dataChannelState;
@@ -403,3 +517,5 @@ function logEvent(type, detail) {
   eventLog.append(entry);
   eventLog.scrollTop = eventLog.scrollHeight;
 }
+
+void syncAuthState();

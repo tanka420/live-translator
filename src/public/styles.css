@@ -120,6 +120,36 @@ article {
   font-weight: 750;
 }
 
+.account-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.session-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.session-label {
+  color: var(--muted);
+}
+
 .status-dot {
   width: 10px;
   height: 10px;
@@ -171,7 +201,7 @@ article {
 
 .control-dock {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
+  grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 0.9fr);
   gap: 12px;
   align-items: stretch;
   width: 100%;
@@ -241,42 +271,6 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.mix-control {
-  display: grid;
-  align-content: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.mix-heading,
-.mix-scale {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.range-label {
-  display: inline;
-}
-
-#mixValue {
-  color: var(--ink);
-  font-size: 1rem;
-  font-weight: 750;
-}
-
-input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.mix-scale {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 750;
-}
-
 .button-row {
   display: grid;
   align-content: center;
@@ -304,6 +298,12 @@ button.secondary {
   border-color: var(--line-strong);
   background: var(--panel);
   color: var(--ink);
+}
+
+button.small {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.9rem;
 }
 
 button:disabled {

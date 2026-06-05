@@ -3,6 +3,15 @@ import { createReadStream, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  getAuthConfig,
+  handleAuthStatusRequest,
+  handleLoginRequest,
+  handleLogoutRequest,
+  isAuthEnabled,
+  isAuthenticatedRequest,
+  renderLoginPage,
+} from "./auth.js";
 import { createClientSecret, normalizeTargetLanguage } from "./session.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,21 +29,66 @@ const CONTENT_TYPES = {
   ".wav": "audio/wav",
 };
 
+const SECURITY_HEADERS = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
+
 export function buildServer({
   env = process.env,
   fetchImpl = fetch,
   publicRoot = DEFAULT_PUBLIC_ROOT,
 } = {}) {
+  const authConfig = getAuthConfig(env);
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
 
+      if (request.method === "GET" && url.pathname === "/healthz") {
+        sendJson(response, 200, {
+          ok: true,
+          authEnabled: isAuthEnabled(authConfig),
+        });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/auth/status") {
+        await handleAuthStatusRequest(request, response, authConfig);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/login") {
+        await handleLoginRequest(request, response, authConfig);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/auth/logout") {
+        handleLogoutRequest(request, response, authConfig);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/session") {
+        if (isAuthEnabled(authConfig) && !isAuthenticatedRequest(request, authConfig)) {
+          sendJson(response, 401, { error: "Authentication required." });
+          return;
+        }
         await handleSessionRequest(request, response, { env, fetchImpl });
         return;
       }
 
       if (request.method === "GET" || request.method === "HEAD") {
+        if (isAuthEnabled(authConfig) && !isAuthenticatedRequest(request, authConfig)) {
+          if (url.pathname === "/" || url.pathname === "/index.html") {
+            sendHtml(response, 200, renderLoginPage(), request.method);
+            return;
+          }
+          sendJson(response, 401, { error: "Authentication required." });
+          return;
+        }
+
         await serveStatic(url.pathname, response, { method: request.method, publicRoot });
         return;
       }
@@ -119,6 +173,7 @@ async function serveStatic(urlPath, response, { method, publicRoot }) {
   response.writeHead(200, {
     "Cache-Control": "no-store",
     "Content-Type": contentTypeFor(filePath),
+    ...SECURITY_HEADERS,
   });
 
   if (method === "HEAD") {
@@ -214,6 +269,7 @@ function sendJson(response, status, body) {
   response.writeHead(status, {
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
+    ...SECURITY_HEADERS,
   });
   response.end(JSON.stringify(body));
 }
@@ -222,7 +278,21 @@ function sendText(response, status, body) {
   response.writeHead(status, {
     "Cache-Control": "no-store",
     "Content-Type": "text/plain; charset=utf-8",
+    ...SECURITY_HEADERS,
   });
+  response.end(body);
+}
+
+function sendHtml(response, status, body, method = "GET") {
+  response.writeHead(status, {
+    "Cache-Control": "no-store",
+    "Content-Type": "text/html; charset=utf-8",
+    ...SECURITY_HEADERS,
+  });
+  if (method === "HEAD") {
+    response.end();
+    return;
+  }
   response.end(body);
 }
 

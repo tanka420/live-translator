@@ -14,8 +14,8 @@
           <h1>Live Event Translator</h1>
           <p class="summary">
             Turn live international events, interviews, keynotes, and public
-            speeches playing in a browser tab into Vietnamese translated speech
-            and captions.
+            speeches playing in a browser tab into Vietnamese translated
+            captions and transcript.
           </p>
         </div>
         <div class="status-card" aria-live="polite">
@@ -23,6 +23,16 @@
           <div class="status-panel">
             <span class="status-dot" id="statusDot"></span>
             <span id="statusText">Stopped</span>
+          </div>
+          <div class="session-panel">
+            <span class="session-label">Meeting session</span>
+            <span id="sessionCount">Not started</span>
+          </div>
+          <div class="account-panel">
+            <span id="accountName">Loading account...</span>
+            <button id="logoutButton" type="button" class="secondary small">
+              Logout
+            </button>
           </div>
         </div>
       </section>
@@ -52,25 +62,6 @@
             <option value="it">Italian</option>
             <option value="en">English</option>
           </select>
-        </div>
-
-        <div class="dock-section mix-control">
-          <div class="mix-heading">
-            <label class="range-label" for="audioMix">Audio mix</label>
-            <span id="mixValue">85% translated</span>
-          </div>
-          <input
-            id="audioMix"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value="85"
-          />
-          <div class="mix-scale" aria-hidden="true">
-            <span id="originalMixLabel">Original 15%</span>
-            <span id="translatedMixLabel">Translated 85%</span>
-          </div>
         </div>
 
         <div class="dock-section button-row">

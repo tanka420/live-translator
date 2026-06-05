@@ -25,6 +25,7 @@ test("serves the browser app from the root route", async () => {
 
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
     assert.match(body, /Live Event Translator/);
     assert.match(body, /Choose event tab/);
     assert.doesNotMatch(body, /Start translating</);
@@ -37,6 +38,20 @@ test("serves the browser app from the root route", async () => {
 test("uses localhost by default and allows the listen host to be configured", () => {
   assert.equal(getListenHost({}), "127.0.0.1");
   assert.equal(getListenHost({ HOST: "0.0.0.0" }), "0.0.0.0");
+});
+
+test("fails fast on partial auth configuration", () => {
+  assert.throws(
+    () =>
+      buildServer({
+        env: {
+          OPENAI_API_KEY: "sk-test",
+          APP_AUTH_USERNAME: "demo",
+          APP_AUTH_PASSWORD: "secret",
+        },
+      }),
+    /must all be set together/i,
+  );
 });
 
 test("serves the source speech WAV as audio", async () => {
@@ -57,7 +72,85 @@ test("serves browser app code that connects to translation over WebRTC", async (
     assert.match(body, /RTCPeerConnection/);
     assert.match(body, /realtime\/translations\/calls/);
     assert.doesNotMatch(body, /new WebSocket/);
+    assert.doesNotMatch(body, /audioMix/);
+    assert.doesNotMatch(body, /sourceAudio/);
+    assert.doesNotMatch(body, /translatedAudio/);
   });
+});
+
+test("exposes a health endpoint for deploy checks", async () => {
+  await withServer({ env: { OPENAI_API_KEY: "sk-test" } }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/healthz`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, { ok: true, authEnabled: false });
+  });
+});
+
+test("requires auth when internal login is configured", async () => {
+  const env = {
+    OPENAI_API_KEY: "sk-test",
+    APP_AUTH_USERNAME: "demo",
+    APP_AUTH_PASSWORD: "secret",
+    APP_AUTH_SECRET: "super-secret-cookie-key",
+  };
+
+  await withServer(
+    {
+      env,
+      fetchImpl: async () =>
+        Response.json({
+          value: "ek_test",
+          expires_at: 123,
+          session: { id: "sess_test" },
+        }),
+    },
+    async (baseUrl) => {
+      const loginPage = await fetch(`${baseUrl}/`);
+      const loginBody = await loginPage.text();
+      assert.equal(loginPage.status, 200);
+      assert.match(loginBody, /Sign in to continue/);
+
+      const blockedSession = await fetch(`${baseUrl}/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetLanguage: "es" }),
+      });
+      const blockedBody = await blockedSession.json();
+      assert.equal(blockedSession.status, 401);
+      assert.match(blockedBody.error, /authentication required/i);
+
+      const loginResponse = await fetch(`${baseUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "demo", password: "secret" }),
+      });
+      const loginResult = await loginResponse.json();
+      const cookie = loginResponse.headers.get("set-cookie") ?? "";
+      assert.equal(loginResponse.status, 200);
+      assert.equal(loginResult.authenticated, true);
+      assert.match(cookie, /meeting_auth=/);
+
+      const authedStatus = await fetch(`${baseUrl}/auth/status`, {
+        headers: { cookie: cookie.split(";")[0] },
+      });
+      const authedStatusBody = await authedStatus.json();
+      assert.equal(authedStatusBody.authenticated, true);
+      assert.equal(authedStatusBody.username, "demo");
+
+      const authedSession = await fetch(`${baseUrl}/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: cookie.split(";")[0],
+        },
+        body: JSON.stringify({ targetLanguage: "es" }),
+      });
+      const authedSessionBody = await authedSession.json();
+      assert.equal(authedSession.status, 200);
+      assert.equal(authedSessionBody.client_secret, "ek_test");
+    });
 });
 
 test("POST /session validates target language before calling OpenAI", async () => {
