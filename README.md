@@ -10,7 +10,7 @@ https://developers.openai.com/cookbook/examples/voice_solutions/realtime_transla
 
 Code provenance:
 - Original inspiration: OpenAI Cookbook realtime translation guide
-- Repository basis: `thanhhuy0611/live-event-translator-demo`
+- Repository basis: upstream demo repository
 - Customizations in this repo: auth gate, session handling, production headers,
   VPS deployment hardening, and meeting-session UX
 

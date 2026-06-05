@@ -2,7 +2,7 @@
 
 This guide deploys the app from GitHub to a VPS at:
 
-- `translator.songdailong.com`
+- `your-subdomain.your-domain.com`
 
 The goal is to keep this service isolated from existing WordPress sites on the
 same VPS.
@@ -11,7 +11,7 @@ same VPS.
 
 Use the public repository as the source of truth:
 
-- `https://github.com/tanka420/live-translator`
+- `https://github.com/<your-github-username>/live-translator`
 
 Recommended workflow:
 
@@ -36,7 +36,7 @@ Keep the translator app separate from WordPress paths.
 Recommended location:
 
 ```text
-/srv/live-translator
+/srv/<your-app-name>
 ```
 
 Keep these separate from existing WordPress directories:
@@ -99,7 +99,7 @@ docker run -d \
   --name live-translator \
   --restart unless-stopped \
   -p 127.0.0.1:5173:5173 \
-  --env-file /srv/live-translator/.env \
+  --env-file /srv/<your-app-name>/.env \
   live-translator
 ```
 
@@ -111,14 +111,14 @@ curl http://127.0.0.1:5173/healthz
 
 ## 7. Nginx Reverse Proxy
 
-Create a dedicated server block for `translator.songdailong.com`.
+Create a dedicated server block for `your-subdomain.your-domain.com`.
 
 Example:
 
 ```nginx
 server {
   listen 80;
-  server_name translator.songdailong.com;
+  server_name your-subdomain.your-domain.com;
 
   location / {
     proxy_pass http://127.0.0.1:5173;
@@ -139,7 +139,7 @@ Important:
 
 - Keep this server block separate from WordPress virtual hosts.
 - Do not share the same upstream as WordPress.
-- Route only `translator.songdailong.com` to this app.
+- Route only `your-subdomain.your-domain.com` to this app.
 
 ## 8. WordPress Isolation
 
@@ -192,5 +192,5 @@ Each update should follow this order:
 1. Pull latest GitHub changes.
 2. Rebuild the Docker image or restart the Node service.
 3. Verify `GET /healthz`.
-4. Open `translator.songdailong.com`.
+4. Open `your-subdomain.your-domain.com`.
 5. Test one full capture session.
