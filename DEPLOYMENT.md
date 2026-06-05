@@ -141,26 +141,7 @@ Important:
 - Do not share the same upstream as WordPress.
 - Route only `your-subdomain.your-domain.com` to this app.
 
-## 8. WordPress Isolation
-
-Since the VPS already runs multiple WordPress sites, keep translator isolated by:
-
-- Separate `server_name`
-- Separate service/process
-- Separate port
-- Separate logs
-- Separate `.env`
-- Separate restart policy
-- Separate deployment directory
-
-Recommended checks:
-
-1. Make sure Nginx does not map the translator domain to a WordPress root.
-2. Make sure PHP-FPM pools are not reused by the translator app.
-3. Make sure the translator app cannot write into WordPress folders.
-4. Make sure firewall rules only expose `80/443` publicly.
-
-## 9. Internal Access Control
+## 8. Internal Access Control
 
 The app already supports internal login via:
 
@@ -171,7 +152,7 @@ The app already supports internal login via:
 Use this together with Nginx/TLS so the service is public on the internet but
 usable only by authenticated internal users.
 
-## 10. Health and Monitoring
+## 9. Health and Monitoring
 
 Use the health endpoint:
 
@@ -185,7 +166,7 @@ Monitor:
 - disk usage
 - log growth
 
-## 11. Update Flow
+## 10. Update Flow
 
 Each update should follow this order:
 
