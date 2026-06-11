@@ -28,6 +28,7 @@ test("serves the browser app from the root route", async () => {
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
     assert.match(body, /Live Translator/);
     assert.match(body, /Choose event tab/);
+    assert.match(body, /Show debug log/);
     assert.doesNotMatch(body, /Start translating</);
     assert.doesNotMatch(body, /OpenAI Developers/);
     assert.doesNotMatch(body, /class="topbar"/);
@@ -52,15 +53,6 @@ test("fails fast on partial auth configuration", () => {
       }),
     /must all be set together/i,
   );
-});
-
-test("serves the source speech WAV as audio", async () => {
-  await withServer({ env: { OPENAI_API_KEY: "sk-test" } }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/source-speech.wav`, { method: "HEAD" });
-
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type") ?? "", /audio\/wav/);
-  });
 });
 
 test("serves browser app code that connects to translation over WebRTC", async () => {

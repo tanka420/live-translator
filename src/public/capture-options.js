@@ -5,10 +5,6 @@ export function buildDisplayMediaOptions(supportedConstraints = {}) {
     autoGainControl: false,
   };
 
-  if (supportedConstraints.suppressLocalAudioPlayback) {
-    audio.suppressLocalAudioPlayback = true;
-  }
-
   return {
     preferCurrentTab: false,
     selfBrowserSurface: "exclude",

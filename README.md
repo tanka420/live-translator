@@ -22,7 +22,7 @@ Code provenance:
 - Displays translated transcript deltas and event/debug state.
 - Defaults the output language to Vietnamese.
 
-Good demo sources:
+Good source tabs:
 
 - Official government speech or press conference.
 - Federal Reserve / central bank speech.
@@ -98,7 +98,7 @@ Recommended reverse proxy setup:
 For a full VPS + subdomain + WordPress-isolation walkthrough, see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## End-User Flow To Record
+## End-User Flow
 
 1. Open an official event/interview/keynote tab with audio.
 2. Open this app in another tab.
@@ -113,20 +113,6 @@ For a full VPS + subdomain + WordPress-isolation walkthrough, see
 ```bash
 npm test
 ```
-
-Live API smoke test, only after `.env` has `OPENAI_API_KEY`:
-
-```bash
-npm run smoke
-```
-
-## Notes For The Video
-
-- Position this as a practical live-event translator, not a claim that OpenAI
-  invented realtime translation.
-- Avoid claiming perfect realtime or perfect interpretation.
-- For short-form clips, use short excerpts from official/public sources and
-  keep the focus on the app behavior.
 
 ## Attribution
 

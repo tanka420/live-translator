@@ -131,8 +131,21 @@
         </article>
 
         <article class="log-card">
-          <h2>Event log</h2>
-          <div id="eventLog" class="log" aria-live="polite"></div>
+          <div class="card-header">
+            <h2>Event log</h2>
+            <button
+              id="eventLogToggle"
+              type="button"
+              class="secondary small"
+              aria-controls="eventLogPanel"
+              aria-expanded="false"
+            >
+              Show debug log
+            </button>
+          </div>
+          <div id="eventLogPanel" hidden>
+            <div id="eventLog" class="log" aria-live="polite"></div>
+          </div>
         </article>
       </section>
     </main>

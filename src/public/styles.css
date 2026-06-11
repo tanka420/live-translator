@@ -392,6 +392,18 @@ ol {
   text-align: right;
 }
 
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.card-header h2 {
+  margin-bottom: 0;
+}
+
 .transcript,
 .log {
   overflow: auto;

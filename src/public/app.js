@@ -17,6 +17,8 @@ const logoutButton = document.querySelector("#logoutButton");
 const inputMeter = document.querySelector("#inputMeter");
 const queueProgress = document.querySelector("#queueProgress");
 const translatedTranscript = document.querySelector("#translatedTranscript");
+const eventLogToggle = document.querySelector("#eventLogToggle");
+const eventLogPanel = document.querySelector("#eventLogPanel");
 const eventLog = document.querySelector("#eventLog");
 const captureState = document.querySelector("#captureState");
 const chunksSent = document.querySelector("#chunksSent");
@@ -49,10 +51,15 @@ startButton.disabled = true;
 stopButton.disabled = true;
 targetLanguage.disabled = true;
 logoutButton.disabled = true;
+setEventLogExpanded(false);
 
 logoutButton.addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST" });
   location.href = "/";
+});
+
+eventLogToggle.addEventListener("click", () => {
+  setEventLogExpanded(eventLogPanel.hidden);
 });
 
 startButton.addEventListener("click", async () => {
@@ -360,6 +367,9 @@ function resetDiagnostics() {
   diagnostics = createEmptyDiagnostics();
   captureState.textContent = "Starting";
   eventLog.textContent = "";
+  if (!eventLogPanel.hidden) {
+    eventLog.scrollTop = eventLog.scrollHeight;
+  }
   updateDiagnostics();
 }
 
@@ -487,7 +497,11 @@ function clearReconnectTimer() {
 }
 
 function closeRealtimeConnection() {
-  closeRealtimeConnection();
+  dataChannel?.close();
+  dataChannel = null;
+
+  peerConnection?.close();
+  peerConnection = null;
 }
 
 function shouldRecoverConnection(connectionState) {
@@ -515,7 +529,15 @@ function logEvent(type, detail) {
   entry.className = "log-entry";
   entry.textContent = `[${new Date().toLocaleTimeString()}] ${type}: ${detail}`;
   eventLog.append(entry);
-  eventLog.scrollTop = eventLog.scrollHeight;
+  if (!eventLogPanel.hidden) {
+    eventLog.scrollTop = eventLog.scrollHeight;
+  }
+}
+
+function setEventLogExpanded(expanded) {
+  eventLogPanel.hidden = !expanded;
+  eventLogToggle.setAttribute("aria-expanded", String(expanded));
+  eventLogToggle.textContent = expanded ? "Hide debug log" : "Show debug log";
 }
 
 void syncAuthState();
