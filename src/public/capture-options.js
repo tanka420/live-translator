@@ -16,3 +16,24 @@ export function buildDisplayMediaOptions(supportedConstraints = {}) {
     audio,
   };
 }
+
+export function buildMicrophoneMediaOptions(supportedConstraints = {}) {
+  const audio = {};
+  const preferredConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+  };
+
+  for (const [name, value] of Object.entries(preferredConstraints)) {
+    if (supportedConstraints[name] !== false) {
+      audio[name] = value;
+    }
+  }
+
+  return {
+    audio,
+    video: false,
+  };
+}

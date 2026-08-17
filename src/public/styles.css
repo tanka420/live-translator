@@ -201,7 +201,7 @@ article {
 
 .control-dock {
   display: grid;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 0.9fr);
+  grid-template-columns: repeat(2, minmax(190px, 0.8fr)) minmax(300px, 0.9fr);
   gap: 12px;
   align-items: stretch;
   width: 100%;

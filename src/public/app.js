@@ -1,4 +1,7 @@
-import { buildDisplayMediaOptions } from "/capture-options.js";
+import {
+  buildDisplayMediaOptions,
+  buildMicrophoneMediaOptions,
+} from "/capture-options.js";
 
 const TRANSLATION_CALL_URL =
   "https://api.openai.com/v1/realtime/translations/calls";
@@ -6,7 +9,27 @@ const TRANSLATION_CALL_URL =
 const OUTPUT_TRANSCRIPT_EVENTS = new Set(["session.output_transcript.delta"]);
 const INPUT_TRANSCRIPT_EVENTS = new Set(["session.input_transcript.delta"]);
 
+const AUDIO_SOURCES = {
+  tab: {
+    buttonLabel: "Choose event tab",
+    capturePrompt: "Pick a browser tab with audio",
+    translatingStatus: "Translating tab audio",
+    endedStatus: "Tab audio sharing ended",
+    meterLabel: "Captured tab audio",
+    guide: "For tab audio, pick a browser tab and enable audio sharing.",
+  },
+  microphone: {
+    buttonLabel: "Use microphone",
+    capturePrompt: "Allow microphone access",
+    translatingStatus: "Translating microphone audio",
+    endedStatus: "Microphone capture ended",
+    meterLabel: "Captured microphone audio",
+    guide: "For microphone audio, allow access when your browser asks.",
+  },
+};
+
 const targetLanguage = document.querySelector("#targetLanguage");
+const captureSource = document.querySelector("#captureSource");
 const startButton = document.querySelector("#startButton");
 const stopButton = document.querySelector("#stopButton");
 const statusDot = document.querySelector("#statusDot");
@@ -15,6 +38,8 @@ const sessionCount = document.querySelector("#sessionCount");
 const accountName = document.querySelector("#accountName");
 const logoutButton = document.querySelector("#logoutButton");
 const inputMeter = document.querySelector("#inputMeter");
+const inputMeterLabel = document.querySelector("#inputMeterLabel");
+const captureGuide = document.querySelector("#captureGuide");
 const queueProgress = document.querySelector("#queueProgress");
 const translatedTranscript = document.querySelector("#translatedTranscript");
 const eventLogToggle = document.querySelector("#eventLogToggle");
@@ -50,8 +75,10 @@ let authState = {
 startButton.disabled = true;
 stopButton.disabled = true;
 targetLanguage.disabled = true;
+captureSource.disabled = true;
 logoutButton.disabled = true;
 setEventLogExpanded(false);
+updateCaptureSourceUi();
 
 logoutButton.addEventListener("click", async () => {
   await fetch("/auth/logout", { method: "POST" });
@@ -62,14 +89,17 @@ eventLogToggle.addEventListener("click", () => {
   setEventLogExpanded(eventLogPanel.hidden);
 });
 
+captureSource.addEventListener("change", updateCaptureSourceUi);
+
 startButton.addEventListener("click", async () => {
+  const source = getSelectedAudioSource();
   beginSession();
   setControls({ running: true });
-  setStatus("Pick a browser tab with audio", "idle");
+  setStatus(source.capturePrompt, "idle");
 
   try {
     activeMeetingReset();
-    captureStream = await captureTabAudio();
+    captureStream = await captureAudio(captureSource.value);
     startInputMeter(captureStream);
 
     setStatus("Creating Realtime Translation session", "idle");
@@ -78,7 +108,7 @@ startButton.addEventListener("click", async () => {
     setStatus("Connecting WebRTC", "idle");
     await connectRealtimeTranslation(session, captureStream);
 
-    setStatus("Translating tab audio", "live");
+    setStatus(source.translatingStatus, "live");
   } catch (error) {
     logEvent("error", error instanceof Error ? error.message : String(error));
     await stop("Stopped after startup error", "error");
@@ -235,6 +265,49 @@ async function captureTabAudio() {
   return stream;
 }
 
+async function captureMicrophoneAudio() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("This browser does not support microphone capture.");
+  }
+
+  const supportedConstraints =
+    navigator.mediaDevices.getSupportedConstraints?.() ?? {};
+  const stream = await navigator.mediaDevices.getUserMedia(
+    buildMicrophoneMediaOptions(supportedConstraints),
+  );
+  const audioTracks = stream.getAudioTracks();
+
+  if (audioTracks.length === 0) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new Error("No microphone audio track is available.");
+  }
+
+  audioTracks[0].addEventListener(
+    "ended",
+    () => {
+      void stop(AUDIO_SOURCES.microphone.endedStatus, "idle");
+    },
+    { once: true },
+  );
+
+  const settings = audioTracks[0].getSettings?.() ?? {};
+  const deviceLabel = audioTracks[0].label || "default microphone";
+  captureState.textContent = `microphone=${audioTracks[0].readyState}, channels=${settings.channelCount ?? "unknown"}`;
+  logEvent(
+    "capture.started",
+    `source=microphone, device=${deviceLabel}, channels=${settings.channelCount ?? "unknown"}`,
+  );
+
+  return stream;
+}
+
+async function captureAudio(source) {
+  if (source === "microphone") {
+    return captureMicrophoneAudio();
+  }
+  return captureTabAudio();
+}
+
 function startInputMeter(stream) {
   meterContext = new AudioContext();
   meterSource = meterContext.createMediaStreamSource(stream);
@@ -332,7 +405,19 @@ function setControls({ running }) {
   startButton.disabled = running || !authState.authenticated;
   stopButton.disabled = !running;
   targetLanguage.disabled = running || !authState.authenticated;
+  captureSource.disabled = running || !authState.authenticated;
   logoutButton.disabled = !authState.authenticated || !authState.enabled;
+}
+
+function getSelectedAudioSource() {
+  return AUDIO_SOURCES[captureSource.value] ?? AUDIO_SOURCES.tab;
+}
+
+function updateCaptureSourceUi() {
+  const source = getSelectedAudioSource();
+  startButton.textContent = source.buttonLabel;
+  inputMeterLabel.textContent = source.meterLabel;
+  captureGuide.textContent = source.guide;
 }
 
 function setStatus(message, state) {
@@ -410,6 +495,7 @@ async function syncAuthState() {
     startButton.disabled = true;
     stopButton.disabled = true;
     targetLanguage.disabled = true;
+    captureSource.disabled = true;
     logoutButton.disabled = true;
     return;
   }
@@ -454,7 +540,7 @@ async function scheduleConnectionRecovery(reason) {
       return;
     }
     await connectRealtimeTranslation(session, captureStream);
-    setStatus("Translating tab audio", "live");
+    setStatus(getSelectedAudioSource().translatingStatus, "live");
     reconnectDelayMs = 1000;
     logEvent("reconnect", "Session restored");
   } catch (error) {
