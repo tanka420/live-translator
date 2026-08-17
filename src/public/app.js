@@ -2,12 +2,14 @@ import {
   buildDisplayMediaOptions,
   buildMicrophoneMediaOptions,
 } from "/capture-options.js";
+import { getSessionRefreshDelay } from "/session-timing.js";
 
 const TRANSLATION_CALL_URL =
   "https://api.openai.com/v1/realtime/translations/calls";
 
 const OUTPUT_TRANSCRIPT_EVENTS = new Set(["session.output_transcript.delta"]);
 const INPUT_TRANSCRIPT_EVENTS = new Set(["session.input_transcript.delta"]);
+const MAX_LOG_ENTRIES = 500;
 
 const AUDIO_SOURCES = {
   tab: {
@@ -28,7 +30,6 @@ const AUDIO_SOURCES = {
   },
 };
 
-const targetLanguage = document.querySelector("#targetLanguage");
 const captureSource = document.querySelector("#captureSource");
 const startButton = document.querySelector("#startButton");
 const stopButton = document.querySelector("#stopButton");
@@ -64,6 +65,7 @@ let diagnostics = createEmptyDiagnostics();
 let sessionNumber = 0;
 let sessionRefreshTimer = null;
 let reconnectTimer = null;
+let disconnectRecoveryTimer = null;
 let reconnectDelayMs = 1000;
 let sessionRecoveryInProgress = false;
 let authState = {
@@ -74,7 +76,6 @@ let authState = {
 
 startButton.disabled = true;
 stopButton.disabled = true;
-targetLanguage.disabled = true;
 captureSource.disabled = true;
 logoutButton.disabled = true;
 setEventLogExpanded(false);
@@ -99,11 +100,29 @@ startButton.addEventListener("click", async () => {
 
   try {
     activeMeetingReset();
-    captureStream = await captureAudio(captureSource.value);
-    startInputMeter(captureStream);
+    const capturePromise = captureAudio(captureSource.value);
+    const sessionPromise = createSession();
+    const [captureResult, sessionResult] = await Promise.allSettled([
+      capturePromise,
+      sessionPromise,
+    ]);
 
-    setStatus("Creating Realtime Translation session", "idle");
-    const session = await createRealtimeSession(targetLanguage.value);
+    if (
+      captureResult.status === "rejected" ||
+      sessionResult.status === "rejected"
+    ) {
+      if (captureResult.status === "fulfilled") {
+        captureResult.value.getTracks().forEach((track) => track.stop());
+      }
+      throw captureResult.status === "rejected"
+        ? captureResult.reason
+        : sessionResult.reason;
+    }
+
+    captureStream = captureResult.value;
+    const session = sessionResult.value;
+    startInputMeter(captureStream);
+    scheduleSessionRefresh(session.expires_at);
 
     setStatus("Connecting WebRTC", "idle");
     await connectRealtimeTranslation(session, captureStream);
@@ -122,47 +141,68 @@ stopButton.addEventListener("click", async () => {
   await stop("Stopped", "idle");
 });
 
-async function createSession(language) {
+async function createSession() {
   const response = await fetch("/session", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ targetLanguage: language }),
   });
 
-  const body = await response.json();
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error("Authentication required.");
     }
-    throw new Error(body.error ?? "Failed to create session.");
+    throw new Error(getSessionErrorMessage(body));
   }
 
   return body;
 }
 
-async function createRealtimeSession(language) {
-  const session = await createSession(language);
+function getSessionErrorMessage(body) {
+  const openAIMessage = body?.details?.error?.message;
+  if (typeof openAIMessage === "string" && openAIMessage) {
+    return openAIMessage;
+  }
+  if (typeof body?.details === "string" && body.details) {
+    return body.details;
+  }
+  return body?.error ?? "Failed to create session.";
+}
+
+async function createRealtimeSession() {
+  const session = await createSession();
   scheduleSessionRefresh(session.expires_at);
   return session;
 }
 
 async function connectRealtimeTranslation(session, stream) {
-  peerConnection = new RTCPeerConnection();
-  dataChannel = peerConnection.createDataChannel("oai-events");
+  const connection = new RTCPeerConnection();
+  const channel = connection.createDataChannel("oai-events");
+  peerConnection = connection;
+  dataChannel = channel;
 
-  peerConnection.onconnectionstatechange = () => {
-    diagnostics.connectionState = peerConnection?.connectionState ?? "closed";
+  connection.onconnectionstatechange = () => {
+    if (peerConnection !== connection) {
+      return;
+    }
+    diagnostics.connectionState = connection.connectionState;
     chunksSent.textContent = diagnostics.connectionState;
     logEvent("webrtc.connection", diagnostics.connectionState);
     updateDiagnostics();
-    if (shouldRecoverConnection(diagnostics.connectionState)) {
+    if (diagnostics.connectionState === "failed") {
+      clearDisconnectRecoveryTimer();
       void scheduleConnectionRecovery("WebRTC connection lost");
+    } else if (diagnostics.connectionState === "disconnected") {
+      scheduleDisconnectRecovery();
+    } else if (diagnostics.connectionState === "connected") {
+      clearDisconnectRecoveryTimer();
     }
   };
 
-  peerConnection.oniceconnectionstatechange = () => {
-    diagnostics.iceConnectionState =
-      peerConnection?.iceConnectionState ?? "closed";
+  connection.oniceconnectionstatechange = () => {
+    if (peerConnection !== connection) {
+      return;
+    }
+    diagnostics.iceConnectionState = connection.iceConnectionState;
     queueProgress.value =
       diagnostics.iceConnectionState === "connected" ||
       diagnostics.iceConnectionState === "completed"
@@ -171,36 +211,45 @@ async function connectRealtimeTranslation(session, stream) {
     updateDiagnostics();
   };
 
-  peerConnection.ontrack = () => {
+  connection.ontrack = () => {
+    if (peerConnection !== connection) {
+      return;
+    }
     diagnostics.remoteAudioTracks += 1;
     outputAudioDeltas.textContent = String(diagnostics.remoteAudioTracks);
     logEvent("remote.audio", "track received");
     updateDiagnostics();
   };
 
-  dataChannel.onopen = () => {
-    diagnostics.dataChannelState = dataChannel?.readyState ?? "open";
+  channel.onopen = () => {
+    if (dataChannel !== channel) {
+      return;
+    }
+    diagnostics.dataChannelState = channel.readyState;
     activeInputFrames.textContent = diagnostics.dataChannelState;
     logEvent("datachannel.open", "ok");
     updateDiagnostics();
   };
-  dataChannel.onclose = () => {
+  channel.onclose = () => {
+    if (dataChannel !== channel) {
+      return;
+    }
     diagnostics.dataChannelState = "closed";
     activeInputFrames.textContent = "closed";
     logEvent("datachannel.close", "closed");
     updateDiagnostics();
   };
-  dataChannel.onerror = () => {
+  channel.onerror = () => {
     logEvent("datachannel.error", "error");
   };
-  dataChannel.onmessage = handleRealtimeEvent;
+  channel.onmessage = handleRealtimeEvent;
 
   for (const track of stream.getAudioTracks()) {
-    peerConnection.addTrack(track, stream);
+    connection.addTrack(track, stream);
   }
 
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(offer);
 
   const sdpResponse = await fetch(TRANSLATION_CALL_URL, {
     method: "POST",
@@ -216,12 +265,12 @@ async function connectRealtimeTranslation(session, stream) {
     throw new Error(answerSdp);
   }
 
-  await peerConnection.setRemoteDescription({
+  await connection.setRemoteDescription({
     type: "answer",
     sdp: answerSdp,
   });
 
-  logEvent("webrtc.offer", `connected for ${session.targetLanguage}`);
+  logEvent("webrtc.offer", `connected -> ${session.targetLanguage}`);
 }
 
 async function captureTabAudio() {
@@ -386,11 +435,7 @@ async function stop(message, state = "idle") {
   }
   meterContext = null;
 
-  dataChannel?.close();
-  dataChannel = null;
-
-  peerConnection?.close();
-  peerConnection = null;
+  closeRealtimeConnection();
 
   captureStream?.getTracks().forEach((track) => track.stop());
   captureStream = null;
@@ -404,7 +449,6 @@ async function stop(message, state = "idle") {
 function setControls({ running }) {
   startButton.disabled = running || !authState.authenticated;
   stopButton.disabled = !running;
-  targetLanguage.disabled = running || !authState.authenticated;
   captureSource.disabled = running || !authState.authenticated;
   logoutButton.disabled = !authState.authenticated || !authState.enabled;
 }
@@ -428,7 +472,7 @@ function setStatus(message, state) {
 }
 
 function appendTranslatedText(text) {
-  translatedTranscript.textContent += text;
+  translatedTranscript.append(document.createTextNode(text));
   translatedTranscript.scrollTop = translatedTranscript.scrollHeight;
 }
 
@@ -468,6 +512,7 @@ function beginSession() {
 function activeMeetingReset() {
   clearSessionRefreshTimer();
   clearReconnectTimer();
+  clearDisconnectRecoveryTimer();
   sessionRecoveryInProgress = false;
   reconnectDelayMs = 1000;
 }
@@ -494,7 +539,6 @@ async function syncAuthState() {
     logoutButton.hidden = true;
     startButton.disabled = true;
     stopButton.disabled = true;
-    targetLanguage.disabled = true;
     captureSource.disabled = true;
     logoutButton.disabled = true;
     return;
@@ -509,11 +553,11 @@ async function syncAuthState() {
 
 function scheduleSessionRefresh(expiresAt) {
   clearSessionRefreshTimer();
-  if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) {
+  const refreshDelayMs = getSessionRefreshDelay(expiresAt);
+  if (refreshDelayMs === null) {
     return;
   }
 
-  const refreshDelayMs = Math.max(30_000, expiresAt - Date.now() - 60_000);
   sessionRefreshTimer = window.setTimeout(() => {
     sessionRefreshTimer = null;
     void scheduleConnectionRecovery("Session expiring");
@@ -535,7 +579,7 @@ async function scheduleConnectionRecovery(reason) {
     logEvent("reconnect", `${reason}; retrying now`);
     setStatus("Reconnecting session", "idle");
     closeRealtimeConnection();
-    const session = await createRealtimeSession(targetLanguage.value);
+    const session = await createRealtimeSession();
     if (!captureStream) {
       return;
     }
@@ -582,19 +626,33 @@ function clearReconnectTimer() {
   }
 }
 
-function closeRealtimeConnection() {
-  dataChannel?.close();
-  dataChannel = null;
+function scheduleDisconnectRecovery() {
+  if (disconnectRecoveryTimer) {
+    return;
+  }
 
-  peerConnection?.close();
-  peerConnection = null;
+  disconnectRecoveryTimer = window.setTimeout(() => {
+    disconnectRecoveryTimer = null;
+    if (peerConnection?.connectionState === "disconnected") {
+      void scheduleConnectionRecovery("WebRTC connection lost");
+    }
+  }, 3_000);
 }
 
-function shouldRecoverConnection(connectionState) {
-  return (
-    connectionState === "failed" ||
-    connectionState === "disconnected"
-  );
+function clearDisconnectRecoveryTimer() {
+  if (disconnectRecoveryTimer) {
+    window.clearTimeout(disconnectRecoveryTimer);
+    disconnectRecoveryTimer = null;
+  }
+}
+
+function closeRealtimeConnection() {
+  const channel = dataChannel;
+  const connection = peerConnection;
+  dataChannel = null;
+  peerConnection = null;
+  channel?.close();
+  connection?.close();
 }
 
 function activeMeetingRunning() {
@@ -615,6 +673,9 @@ function logEvent(type, detail) {
   entry.className = "log-entry";
   entry.textContent = `[${new Date().toLocaleTimeString()}] ${type}: ${detail}`;
   eventLog.append(entry);
+  while (eventLog.childElementCount > MAX_LOG_ENTRIES) {
+    eventLog.firstElementChild?.remove();
+  }
   if (!eventLogPanel.hidden) {
     eventLog.scrollTop = eventLog.scrollHeight;
   }

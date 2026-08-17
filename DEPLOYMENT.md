@@ -69,7 +69,6 @@ Required values:
 ```bash
 OPENAI_API_KEY=...
 OPENAI_TRANSLATION_MODEL=gpt-realtime-translate
-OPENAI_INPUT_TRANSCRIPTION_MODEL=gpt-realtime-whisper
 HOST=0.0.0.0
 PORT=5173
 APP_AUTH_USERNAME=...

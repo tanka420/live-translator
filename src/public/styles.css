@@ -221,6 +221,30 @@ article {
   gap: 18px;
 }
 
+.language-note {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.language-note .field-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.language-note strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.language-note > span:last-child {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 label {
   color: var(--muted);
   font-size: 0.74rem;
