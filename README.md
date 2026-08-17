@@ -20,7 +20,8 @@ Code provenance:
 - Creates a short-lived OpenAI Realtime Translation client secret on the server.
 - Sends the selected input audio to Realtime Translation over WebRTC.
 - Displays translated transcript deltas and event/debug state.
-- Defaults the output language to Vietnamese.
+- Automatically detects the spoken source language and fixes the output language
+  to Vietnamese.
 
 Good source tabs:
 
@@ -41,7 +42,6 @@ Optional:
 
 ```bash
 OPENAI_TRANSLATION_MODEL=gpt-realtime-translate
-OPENAI_INPUT_TRANSCRIPTION_MODEL=gpt-realtime-whisper
 PORT=5173
 HOST=127.0.0.1
 
@@ -100,11 +100,11 @@ For a full VPS + subdomain + WordPress-isolation walkthrough, see
 
 ## End-User Flow
 
-1. Open this app and keep `Vietnamese` selected.
+1. Open this app; the spoken source language is detected automatically.
 2. Choose `Microphone` or `Browser tab audio` as the audio source.
 3. For microphone input, click `Use microphone` and allow access.
 4. For tab input, click `Choose event tab`, pick the source tab, and enable tab audio.
-5. Follow the translated transcript, audio meter, and WebRTC status.
+5. Follow the Vietnamese translated transcript, audio meter, and WebRTC status.
 6. Use the event log and session status to verify the session is stable.
 
 ## Validation

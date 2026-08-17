@@ -29,6 +29,9 @@ test("serves the browser app from the root route", async () => {
     assert.match(body, /Live Translator/);
     assert.match(body, /Browser tab audio/);
     assert.match(body, /Microphone/);
+    assert.match(body, /Automatically detected/);
+    assert.doesNotMatch(body, /id="sourceLanguage"/);
+    assert.doesNotMatch(body, /Target language/);
     assert.match(body, /Choose event tab/);
     assert.match(body, /Show debug log/);
     assert.doesNotMatch(body, /Start translating</);
@@ -67,6 +70,8 @@ test("serves browser app code that connects to translation over WebRTC", async (
     assert.match(body, /getDisplayMedia/);
     assert.match(body, /getUserMedia/);
     assert.match(body, /realtime\/translations\/calls/);
+    assert.match(body, /session-timing\.js/);
+    assert.doesNotMatch(body, /sourceLanguage/);
     assert.doesNotMatch(body, /new WebSocket/);
     assert.doesNotMatch(body, /audioMix/);
     assert.doesNotMatch(body, /sourceAudio/);
@@ -111,7 +116,7 @@ test("requires auth when internal login is configured", async () => {
       const blockedSession = await fetch(`${baseUrl}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLanguage: "es" }),
+        body: JSON.stringify({}),
       });
       const blockedBody = await blockedSession.json();
       assert.equal(blockedSession.status, 401);
@@ -141,7 +146,7 @@ test("requires auth when internal login is configured", async () => {
           "Content-Type": "application/json",
           cookie: cookie.split(";")[0],
         },
-        body: JSON.stringify({ targetLanguage: "es" }),
+        body: JSON.stringify({}),
       });
       const authedSessionBody = await authedSession.json();
       assert.equal(authedSession.status, 200);
@@ -149,7 +154,7 @@ test("requires auth when internal login is configured", async () => {
     });
 });
 
-test("POST /session validates target language before calling OpenAI", async () => {
+test("POST /session rejects malformed JSON before calling OpenAI", async () => {
   let calls = 0;
   await withServer(
     {
@@ -163,12 +168,12 @@ test("POST /session validates target language before calling OpenAI", async () =
       const response = await fetch(`${baseUrl}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLanguage: "english" }),
+        body: "{",
       });
       const body = await response.json();
 
       assert.equal(response.status, 400);
-      assert.match(body.error, /language code/i);
+      assert.match(body.error, /invalid json/i);
       assert.equal(calls, 0);
     },
   );
@@ -192,7 +197,7 @@ test("POST /session returns a browser-safe client secret response", async () => 
       const response = await fetch(`${baseUrl}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetLanguage: "es" }),
+        body: JSON.stringify({}),
       });
       const body = await response.json();
 
@@ -202,28 +207,13 @@ test("POST /session returns a browser-safe client secret response", async () => 
         expires_at: 123,
         model: "gpt-realtime-translate",
         session: { id: "sess_test" },
-        session_update: {
-          type: "session.update",
-          session: {
-            audio: {
-              input: {
-                transcription: { model: "gpt-realtime-whisper" },
-                noise_reduction: null,
-              },
-              output: { language: "es" },
-            },
-          },
-        },
-        targetLanguage: "es",
+        targetLanguage: "vi",
       });
       assert.equal(requests.length, 1);
       const requestBody = JSON.parse(requests[0].init.body);
       assert.equal(requestBody.session.model, "gpt-realtime-translate");
-      assert.equal(requestBody.session.audio.output.language, "es");
-      assert.deepEqual(requestBody.session.audio.input, {
-        transcription: { model: "gpt-realtime-whisper" },
-        noise_reduction: null,
-      });
+      assert.equal(requestBody.session.audio.output.language, "vi");
+      assert.equal(Object.hasOwn(requestBody.session.audio, "input"), false);
     },
   );
 });

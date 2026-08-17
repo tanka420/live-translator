@@ -12,7 +12,7 @@ import {
   isAuthenticatedRequest,
   renderLoginPage,
 } from "./auth.js";
-import { createClientSecret, normalizeTargetLanguage } from "./session.js";
+import { createClientSecret } from "./session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,22 +116,11 @@ export function loadEnvFiles(env = process.env, cwd = process.cwd()) {
 }
 
 async function handleSessionRequest(request, response, { env, fetchImpl }) {
-  let body;
   try {
-    body = await readJson(request);
+    await readJson(request);
   } catch (error) {
     sendJson(response, 400, {
       error: error instanceof Error ? error.message : "Invalid JSON body.",
-    });
-    return;
-  }
-
-  let targetLanguage;
-  try {
-    targetLanguage = normalizeTargetLanguage(body.targetLanguage);
-  } catch (error) {
-    sendJson(response, 400, {
-      error: error instanceof Error ? error.message : "Invalid target language.",
     });
     return;
   }
@@ -144,9 +133,7 @@ async function handleSessionRequest(request, response, { env, fetchImpl }) {
   try {
     const result = await createClientSecret({
       apiKey: env.OPENAI_API_KEY,
-      targetLanguage,
       model: env.OPENAI_TRANSLATION_MODEL,
-      inputTranscriptionModel: env.OPENAI_INPUT_TRANSCRIPTION_MODEL,
       fetchImpl,
     });
     sendJson(response, 200, result);
