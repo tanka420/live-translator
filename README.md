@@ -16,9 +16,9 @@ Code provenance:
 
 ## What It Does
 
-- Captures audio from a browser tab selected by the user.
+- Captures audio from either the user's microphone or a selected browser tab.
 - Creates a short-lived OpenAI Realtime Translation client secret on the server.
-- Sends tab audio to Realtime Translation over WebRTC.
+- Sends the selected input audio to Realtime Translation over WebRTC.
 - Displays translated transcript deltas and event/debug state.
 - Defaults the output language to Vietnamese.
 
@@ -100,13 +100,12 @@ For a full VPS + subdomain + WordPress-isolation walkthrough, see
 
 ## End-User Flow
 
-1. Open an official event/interview/keynote tab with audio.
-2. Open this app in another tab.
-3. Keep `Vietnamese` selected.
-4. Click `Choose event tab`.
-5. Pick the source tab and enable tab audio.
-6. Capture the translated transcript, audio meter, and WebRTC status.
-7. Use the event log and session status to verify the session is stable.
+1. Open this app and keep `Vietnamese` selected.
+2. Choose `Microphone` or `Browser tab audio` as the audio source.
+3. For microphone input, click `Use microphone` and allow access.
+4. For tab input, click `Choose event tab`, pick the source tab, and enable tab audio.
+5. Follow the translated transcript, audio meter, and WebRTC status.
+6. Use the event log and session status to verify the session is stable.
 
 ## Validation
 

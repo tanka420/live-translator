@@ -13,9 +13,8 @@
           <p class="eyebrow">AI by Huy demo</p>
           <h1>Live Translator</h1>
           <p class="summary">
-            Turn live international events, interviews, keynotes, and public
-            speeches playing in a browser tab into Vietnamese translated
-            captions and transcript.
+            Turn speech from your microphone or a live event playing in a
+            browser tab into Vietnamese translated captions and transcript.
           </p>
         </div>
         <div class="status-card" aria-live="polite">
@@ -45,6 +44,14 @@
       </section> -->
 
       <section class="control-dock" aria-label="Translation controls">
+        <div class="dock-section field">
+          <label for="captureSource">Audio source</label>
+          <select id="captureSource">
+            <option value="tab" selected>Browser tab audio</option>
+            <option value="microphone">Microphone</option>
+          </select>
+        </div>
+
         <div class="dock-section field">
           <label for="targetLanguage">Target language</label>
           <select id="targetLanguage">
@@ -76,7 +83,7 @@
 
       <section class="meters" aria-label="Audio status">
         <div class="meter-card">
-          <span>Captured tab audio</span>
+          <span id="inputMeterLabel">Captured tab audio</span>
           <meter id="inputMeter" min="0" max="1" value="0"></meter>
         </div>
         <div class="meter-card">
@@ -87,11 +94,11 @@
 
       <section class="workspace">
         <article class="guide-card">
-          <h2>How to test live events</h2>
+          <h2>How to choose an audio source</h2>
           <ol>
-            <li>Open an official speech, interview, or live event tab.</li>
-            <li>Return here and choose that tab from the browser picker.</li>
-            <li>Enable tab audio, then listen for Vietnamese translation.</li>
+            <li>Choose Microphone or Browser tab audio above.</li>
+            <li id="captureGuide">For tab audio, pick a browser tab and enable audio sharing.</li>
+            <li>Speak or play the event, then follow the translated transcript.</li>
           </ol>
           <dl class="diagnostics">
             <div>

@@ -27,6 +27,8 @@ test("serves the browser app from the root route", async () => {
     assert.match(response.headers.get("content-type") ?? "", /text\/html/);
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
     assert.match(body, /Live Translator/);
+    assert.match(body, /Browser tab audio/);
+    assert.match(body, /Microphone/);
     assert.match(body, /Choose event tab/);
     assert.match(body, /Show debug log/);
     assert.doesNotMatch(body, /Start translating</);
@@ -62,6 +64,8 @@ test("serves browser app code that connects to translation over WebRTC", async (
 
     assert.equal(response.status, 200);
     assert.match(body, /RTCPeerConnection/);
+    assert.match(body, /getDisplayMedia/);
+    assert.match(body, /getUserMedia/);
     assert.match(body, /realtime\/translations\/calls/);
     assert.doesNotMatch(body, /new WebSocket/);
     assert.doesNotMatch(body, /audioMix/);
